@@ -1,0 +1,64 @@
+
+pipeline {
+    agent any
+    stages {
+        stage ('Setup Oracle Environment') {
+            steps {
+                echo 'Creating Oracle User, Groups, and Directories'
+                sh script: """
+                    getent group oinstall || sudo groupadd oinstall
+                    getent group dba || sudo groupadd dba
+                    id -u oracle &>/dev/null || sudo useradd -g oinstall -G dba oracle
+                    sudo mkdir -p /u01/app/oracle
+                    sudo mkdir -p /u01/app/oraInventory
+                    sudo mkdir -p /u01/app/oracle/product/19c/dbhome_1
+                    sudo chown -R oracle:oinstall /u01/app
+                    sudo chmod -R 775 /u01/app
+                """
+            }
+        }
+        stage ('Install Preinstallation RPM') {
+            steps {
+                echo 'Installing Oracle Preinstallation RPM'
+                sh script: "sudo dnf -y install oracle-database-preinstall-19c"
+            }
+        }
+        stage ('Set Oracle Base and Home') {
+            steps {
+                echo 'Setting Oracle Base and Home'
+                sh script: """
+                    sudo sh -c 'echo ORACLE_BASE=/u01/app/oracle >> /etc/sysconfig/oracledb_ORCLCDB-19c.conf'
+                    sudo sh -c 'echo ORACLE_HOME=/u01/app/oracle/product/19c/dbhome_1 >> /etc/sysconfig/oracledb_ORCLCDB-19c.conf'
+                """
+            }
+        }
+        stage ('Move RPM to Oracle Home') {
+            steps {
+                echo 'Moving Oracle Database RPM to /u01/app/oracle/product/19c/dbhome_1'
+                sh script: """
+                    sudo mv /tmp/oracle-database-ee-19c-1.0-1.x86_64.rpm /u01/app/oracle/product/19c/dbhome_1/
+                    sudo chown oracle:oinstall /u01/app/oracle/product/19c/dbhome_1/oracle-database-ee-19c-1.0-1.x86_64.rpm
+                    sudo chmod 775 /u01/app/oracle/product/19c/dbhome_1/oracle-database-ee-19c-1.0-1.x86_64.rpm
+                """
+            }
+        }
+        stage ('Install Oracle Database Software RPM') {
+            steps {
+                echo 'Installing Oracle Database Software RPM from /u01/app/oracle/product/19c/dbhome_1'
+                sh script: "sudo dnf -y localinstall /u01/app/oracle/product/19c/dbhome_1/oracle-database-ee-19c-1.0-1.x86_64.rpm"
+            }
+        }
+        stage ('Configure Oracle Database') {
+            steps {
+                echo 'Configuring Oracle Database'
+                sh script: "sudo /etc/init.d/oracledb_ORCLCDB-19c configure"
+            }
+        }
+        stage ('Cleanup') {
+            steps {
+                echo 'Cleaning up Oracle Database RPM from /u01/app/oracle/product/19c/dbhome_1'
+                sh script: "sudo rm -f /u01/app/oracle/product/19c/dbhome_1/oracle-database-ee-19c-1.0-1.x86_64.rpm"
+            }
+        }
+    }
+}
